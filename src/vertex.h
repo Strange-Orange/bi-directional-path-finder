@@ -8,22 +8,22 @@
 
 struct Vertex
 {
-    int m_cost;
-    double m_lat;
-    double m_lng;
+    int m_lat;
+    int m_lng;
     std::string m_name;
+    int m_cost;
 
     Vertex()
-        : m_cost(INT_MAX), m_lat(0), m_lng(0), m_name("***") {}
+        : m_lat(0), m_lng(0), m_name("***"), m_cost(INT_MAX) {}
 
-    Vertex(double p_lat, double p_lng, std::string p_name)
-        : m_cost(INT_MAX), m_lat(p_lat), m_lng(p_lng), m_name(p_name) {};
+    Vertex(int p_lat, int p_lng, std::string p_name)
+        : m_lat(p_lat), m_lng(p_lng), m_name(p_name), m_cost(INT_MAX) {};
 
     Vertex(const Vertex& p_v)
-        : m_cost(p_v.m_cost), m_lat(p_v.m_lat), m_lng(p_v.m_lng), m_name(p_v.m_name) {};
+        : m_lat(p_v.m_lat), m_lng(p_v.m_lng), m_name(p_v.m_name), m_cost(p_v.m_cost) {};
 
     Vertex(Vertex&& p_v)
-        : m_cost(p_v.m_cost), m_lat(p_v.m_lat), m_lng(p_v.m_lng), m_name(p_v.m_name) {};
+        : m_lat(p_v.m_lat), m_lng(p_v.m_lng), m_name(p_v.m_name), m_cost(p_v.m_cost) {};
 
     Vertex& operator=(const Vertex& rhs)
     {
@@ -61,6 +61,14 @@ struct VertexHash
     size_t operator()(const Vertex& p_v) const 
     {
         return m_stringHash(p_v.m_name);
+    }
+};
+
+struct VertexCompare
+{
+    bool operator()(const Vertex& lhs, const Vertex& rhs) const
+    {
+        return (lhs.m_lat == rhs.m_lat) && (lhs.m_lng == rhs.m_lng) && (lhs.m_name == rhs.m_name);
     }
 };
 
