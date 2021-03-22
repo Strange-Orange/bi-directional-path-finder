@@ -48,10 +48,10 @@ adjacencyList parse_data_csv(const char* p_filepath)
     std::sort(l_lngvec.begin(), l_lngvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.m_lng < rhs.m_lng;});
 
     // Update the bounds of the area to be mapped
-    g_geoBounds.m_west = l_latvec.at(0).m_lat;
-    g_geoBounds.m_east = l_latvec.at(l_latvec.size() - 1).m_lat;
-    g_geoBounds.m_south = l_lngvec.at(0).m_lat;
-    g_geoBounds.m_north= l_lngvec.at(l_lngvec.size() - 1).m_lng;
+    g_geoBounds.m_west = l_lngvec.at(0).m_lng;
+    g_geoBounds.m_east = l_lngvec.at(l_lngvec.size() - 1).m_lng;
+    g_geoBounds.m_south = l_latvec.at(0).m_lat;  
+    g_geoBounds.m_north = l_latvec.at(l_latvec.size() - 1).m_lat;
 
     adjacencyList l_adj;
     create_adjacency_list(l_adj, l_latvec, l_lngvec);
