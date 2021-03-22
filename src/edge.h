@@ -19,10 +19,10 @@ struct Edge
     Edge(const Vertex& p_start, const Vertex& p_end)
     {
         // Use the latitude and longitude as vectors
-        double l_x = abs(p_end.m_lng - p_start.m_lng);
-        double l_y = abs(p_end.m_lat - p_start.m_lat);
+        double l_x = abs(p_end.get_lng() - p_start.get_lng());
+        double l_y = abs(p_end.get_lat() - p_start.get_lat());
         m_cost = sqrt(l_x + l_y);
-        m_dest = p_end.m_name;
+        m_dest = p_end.get_name();
     }
 };
 

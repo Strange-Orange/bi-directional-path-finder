@@ -6,6 +6,8 @@
 
 #include <iostream>
 #include <string>
+#include <unordered_set>
+#include <utility>
 #include <SDL2/SDL.h>
 
 SDL_Window* g_window = nullptr;
@@ -60,9 +62,9 @@ void quit()
 // FIX: Does not work for areas that are not in the north east, all locations have position latitude and longitude
 inline void lat_lng_position(const Vertex& p_v, const Bounds& p_bounds, int& o_x, int& o_y)
 {
-    double x_ratio = ((p_v.m_lng - p_bounds.m_west) / (p_bounds.m_east - p_bounds.m_west));
+    double x_ratio = ((p_v.get_lng() - p_bounds.m_west) / (p_bounds.m_east - p_bounds.m_west));
     o_x = x_ratio * WIDTH;
-    double y_ratio = ((p_v.m_lat - p_bounds.m_south) / (p_bounds.m_north - p_bounds.m_south)); 
+    double y_ratio = ((p_v.get_lat() - p_bounds.m_south) / (p_bounds.m_north - p_bounds.m_south)); 
     o_y = y_ratio * HEIGHT;
 }
 
