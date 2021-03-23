@@ -62,10 +62,12 @@ void quit()
 // FIX: Does not work for areas that are not in the north east, all locations have position latitude and longitude
 inline void lat_lng_position(const Vertex& p_v, const Bounds& p_bounds, int& o_x, int& o_y)
 {
-    double x_ratio = ((p_v.get_lng() - p_bounds.m_west) / (p_bounds.m_east - p_bounds.m_west));
-    o_x = x_ratio * WIDTH;
-    double y_ratio = ((p_v.get_lat() - p_bounds.m_south) / (p_bounds.m_north - p_bounds.m_south)); 
-    o_y = y_ratio * HEIGHT;
+    int l_xrange = p_bounds.m_east - p_bounds.m_west;
+    int l_yrange = p_bounds.m_north - p_bounds.m_south;
+    o_x = ((p_v.get_lng() - p_bounds.m_west) * (HEIGHT - 5)) / l_xrange; 
+    o_y = ((p_v.get_lat() - p_bounds.m_south) * (WIDTH - 5)) / l_yrange;
+    // Flip the y axis otherwise the graph will be upside down
+    o_y = (HEIGHT - 5) - o_y;
 }
 
 int main(int argc, char* args[])
@@ -80,6 +82,19 @@ int main(int argc, char* args[])
 
     bool l_quit = false;
     SDL_Event l_event;
+
+    for (const std::pair<Vertex, std::vector<Edge>>& l_item: l_adj)
+    {
+        std::cout << "Location: " << l_item.first.get_name() << " : " << l_item.first.get_lat() << " : " << l_item.first.get_lng() << "\n";
+        int l_x, l_y;
+        lat_lng_position(l_item.first, geoBounds, l_x, l_y);
+        std::cout << l_x << " : " << l_y << "\n";
+        // for (const Edge& e: l_item.second)
+        // {
+            // std::cout << e.m_dest << ", ";
+        // }
+        // std::cout << std::endl;
+    }
 
     // Main loop
     while (!l_quit)
@@ -103,14 +118,14 @@ int main(int argc, char* args[])
         SDL_SetRenderDrawColor(g_renderer, 0, 0, 0, 255);
         SDL_RenderClear(g_renderer);
 
-        int i = 0;
+        SDL_SetRenderDrawColor(g_renderer, 0, 0, 255, 255);
+        int l_vIndex = 0;
         for (const std::pair<Vertex, std::vector<Edge>>& l_item: l_adj)
         {
             int l_x, l_y;
             lat_lng_position(l_item.first, geoBounds, l_x, l_y);
-            l_cityRects.at(i++) = {l_x, l_y, 5, 5};
+            l_cityRects.at(l_vIndex++) = {l_x, l_y, 5, 5};
         }
-        SDL_SetRenderDrawColor(g_renderer, 0, 0, 255, 255);
         SDL_RenderFillRects(g_renderer, l_cityRects.data(), l_cityRects.size());
         
         SDL_RenderPresent(g_renderer);
