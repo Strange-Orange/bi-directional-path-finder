@@ -6,6 +6,7 @@
 #include "common.h"
 
 #include <vector>
+#include <unordered_map>
 
 struct Bounds
 {
@@ -13,6 +14,7 @@ struct Bounds
     double m_west = 0;
     double m_south = 0;
     double m_north = 0;
+    std::unordered_map<std::string, Vertex> m_cities;
 };
 
 adjacencyList parse_data_csv(const char* p_filepath);

@@ -4,6 +4,7 @@
 #include "common.h"
 
 #include <unordered_map>
+// #include 
 #include <vector>
 #include <fstream>
 #include <algorithm>
@@ -44,14 +45,14 @@ adjacencyList parse_data_csv(const char* p_filepath)
         std::getline(l_file, l_name);
     }
 
-    std::sort(l_latvec.begin(), l_latvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.m_lat < rhs.m_lat;});
-    std::sort(l_lngvec.begin(), l_lngvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.m_lng < rhs.m_lng;});
+    std::sort(l_latvec.begin(), l_latvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.get_lat() < rhs.get_lat();});
+    std::sort(l_lngvec.begin(), l_lngvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.get_lng() < rhs.get_lng();});
 
     // Update the bounds of the area to be mapped
-    g_geoBounds.m_west = l_lngvec.at(0).m_lng;
-    g_geoBounds.m_east = l_lngvec.at(l_lngvec.size() - 1).m_lng;
-    g_geoBounds.m_south = l_latvec.at(0).m_lat;  
-    g_geoBounds.m_north = l_latvec.at(l_latvec.size() - 1).m_lat;
+    g_geoBounds.m_west = l_lngvec.at(0).get_lng();
+    g_geoBounds.m_east = l_lngvec.at(l_lngvec.size() - 1).get_lng();
+    g_geoBounds.m_south = l_latvec.at(0).get_lat();  
+    g_geoBounds.m_north = l_latvec.at(l_latvec.size() - 1).get_lat();
 
     adjacencyList l_adj;
     create_adjacency_list(l_adj, l_latvec, l_lngvec);
@@ -65,9 +66,9 @@ int binary_search_latitude(const std::vector<Vertex>& p_v, double p_item)
     while (l_low <= l_high)
     {
         int l_mid = (l_low + l_high) / 2;
-        if (p_v.at(l_mid).m_lat == p_item)
+        if (p_v.at(l_mid).get_lat() == p_item)
             return l_mid;
-        else if (p_v.at(l_mid).m_lat < p_item)
+        else if (p_v.at(l_mid).get_lat() < p_item)
             l_low = l_mid + 1;
         else
             l_high = l_mid - 1;
@@ -80,20 +81,22 @@ int binary_search_latitude(const std::vector<Vertex>& p_v, double p_item)
 // For each Vertex (City) have a most 4 edges, reaching to the closest in North, East, South and West directions
 void create_adjacency_list(adjacencyList& p_adj, const std::vector<Vertex>& p_lats, const std::vector<Vertex>& p_lngs)
 {
-    for (size_t i = 1; i < p_lats.size() - 1; i++)
+    for (size_t i = 0; i < p_lats.size(); i++)
     {
+        // Add vertex to set of all vertices
+        g_geoBounds.m_cities[p_lats.at(i).get_name()] = p_lats.at(i);
         // West and East
         if (i > 0)
             p_adj[p_lats.at(i)].emplace_back(p_lats.at(i), p_lats.at(i - 1));
         if (i < p_lats.size() - 1)
-            p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lats.at(i + 1));
+            p_adj[p_lats.at(i)].emplace_back(p_lats.at(i), p_lats.at(i + 1));
         // South and North
-        int l_lngIndex = binary_search_latitude(p_lngs, p_lats.at(i).m_lat);
+        int l_lngIndex = binary_search_latitude(p_lngs, p_lats.at(i).get_lat());
         if (l_lngIndex != -1)
         {
-            if (l_lngIndex < 1)
+            if (l_lngIndex > 0)
                 p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_lngIndex - 1));
-            if (l_lngIndex > int(p_lngs.size()) - 1)
+            if (l_lngIndex < int(p_lngs.size()) - 1)
                 p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_lngIndex + 1));
         }
     }    
