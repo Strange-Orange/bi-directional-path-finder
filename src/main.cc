@@ -83,19 +83,6 @@ int main(int argc, char* args[])
     bool l_quit = false;
     SDL_Event l_event;
 
-    for (const std::pair<Vertex, std::vector<Edge>>& l_item: l_adj)
-    {
-        std::cout << "Location: " << l_item.first.get_name() << " : " << l_item.first.get_lat() << " : " << l_item.first.get_lng() << "\n";
-        int l_x, l_y;
-        lat_lng_position(l_item.first, geoBounds, l_x, l_y);
-        std::cout << l_x << " : " << l_y << "\n";
-        // for (const Edge& e: l_item.second)
-        // {
-            // std::cout << e.m_dest << ", ";
-        // }
-        // std::cout << std::endl;
-    }
-
     // Main loop
     while (!l_quit)
     {

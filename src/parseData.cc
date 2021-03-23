@@ -4,7 +4,6 @@
 #include "common.h"
 
 #include <unordered_map>
-// #include 
 #include <vector>
 #include <fstream>
 #include <algorithm>
@@ -59,22 +58,60 @@ adjacencyList parse_data_csv(const char* p_filepath)
     return l_adj;
 }
 
-// Search vector for Vertex using latitude member, return -1 if not found
-int binary_search_latitude(const std::vector<Vertex>& p_v, double p_item)
+// Search vector for Vertex using longitude, return -1 if not found
+int binary_search_longitude(const std::vector<Vertex>& p_v, double p_item)
 {
     int l_low = 0, l_high = p_v.size() - 1;
     while (l_low <= l_high)
     {
         int l_mid = (l_low + l_high) / 2;
-        if (p_v.at(l_mid).get_lat() == p_item)
+        if (p_v.at(l_mid).get_lng() == p_item)
             return l_mid;
-        else if (p_v.at(l_mid).get_lat() < p_item)
+        else if (p_v.at(l_mid).get_lng() < p_item)
             l_low = l_mid + 1;
         else
             l_high = l_mid - 1;
 
     }
     // Not found 
+    return -1;
+}
+
+// If a Vertex is the closest in the x direction and the y direction at the same time make sure it is added only once to the adjacency list
+bool duplicate_neighbour(const std::vector<Edge>& p_n, const std::string& p_newN)
+{
+    // The most neighbours a Vertex can have is 4
+    for (const Edge& l_e: p_n)
+    {
+        if (l_e.m_dest == p_newN)
+            return true;
+    }
+    return false;
+}
+
+int get_east_neighbour(const std::vector<Edge>& p_n, const std::vector<Vertex>& p_lngs, size_t p_lngIndex)
+{
+    while (p_lngIndex < p_lngs.size())
+    {
+        if (!duplicate_neighbour(p_n, p_lngs.at(p_lngIndex).get_name()))
+        {
+            return p_lngIndex;
+        }
+        p_lngIndex++;
+    }
+    return -1;
+}
+
+int get_west_neighbour(const std::vector<Edge>& p_n, const std::vector<Vertex>& p_lngs, int p_lngIndex)
+{
+    while (p_lngIndex > -1)
+    {
+        if (!duplicate_neighbour(p_n, p_lngs.at(p_lngIndex).get_name()))
+        {
+            return p_lngIndex;
+        }
+        p_lngIndex--;
+    }
     return -1;
 }
 
@@ -85,19 +122,24 @@ void create_adjacency_list(adjacencyList& p_adj, const std::vector<Vertex>& p_la
     {
         // Add vertex to set of all vertices
         g_geoBounds.m_cities[p_lats.at(i).get_name()] = p_lats.at(i);
-        // West and East
+        // South and North
         if (i > 0)
             p_adj[p_lats.at(i)].emplace_back(p_lats.at(i), p_lats.at(i - 1));
         if (i < p_lats.size() - 1)
             p_adj[p_lats.at(i)].emplace_back(p_lats.at(i), p_lats.at(i + 1));
-        // South and North
-        int l_lngIndex = binary_search_latitude(p_lngs, p_lats.at(i).get_lat());
+        // West and East
+        int l_lngIndex = binary_search_longitude(p_lngs, p_lats.at(i).get_lng());
         if (l_lngIndex != -1)
         {
-            if (l_lngIndex > 0)
-                p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_lngIndex - 1));
-            if (l_lngIndex < int(p_lngs.size()) - 1)
-                p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_lngIndex + 1));
+            int l_west = get_west_neighbour(p_adj.at(p_lats.at(i)), p_lngs, l_lngIndex - 1);
+            if (l_west != -1)
+                p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_west));
+
+            int l_east = get_east_neighbour(p_adj.at(p_lats.at(i)), p_lngs, l_lngIndex + 1);
+            if (l_east != -1)
+            {
+                p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_east));
+            }
         }
     }    
 }
