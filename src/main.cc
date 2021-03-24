@@ -75,13 +75,29 @@ int main(int argc, char* args[])
     if (!init())
         return 1;
 
-    adjacencyList l_adj = parse_data_csv("./data/cn.csv");
+    adjacencyList l_adj;
+    if (argc > 1)
+        l_adj = parse_data_csv(args[1]);
+    // Look for a default in the current directory named data.csv
+    else
+        l_adj = parse_data_csv("./data.csv");
+
     std::vector<SDL_Rect> l_cityRects(l_adj.size());
     Bounds geoBounds = get_bounds();
     std::cout << geoBounds.m_east << " : " << geoBounds.m_west << " : " << geoBounds.m_south << " : " << geoBounds.m_north << "\n";
 
     bool l_quit = false;
     SDL_Event l_event;
+
+    for (const std::pair<Vertex, std::vector<Edge>>& l_item: l_adj)
+    {
+        std::cout << "Location: " << l_item.first.get_name() << " : " << l_item.first.get_lat() << " : " << l_item.first.get_lng() << "\n";
+        for (const Edge& l_e: l_item.second)
+        {
+            std::cout << l_e.m_dest << " : ";
+        }
+        std::cout << std::endl;
+    }
 
     // Main loop
     while (!l_quit)
@@ -112,6 +128,14 @@ int main(int argc, char* args[])
             int l_x, l_y;
             lat_lng_position(l_item.first, geoBounds, l_x, l_y);
             l_cityRects.at(l_vIndex++) = {l_x, l_y, 5, 5};
+
+            for (const Edge& l_e: l_item.second)
+            {
+                int l_dx, l_dy;
+                Vertex l_dest = geoBounds.m_cities.at(l_e.m_dest);
+                lat_lng_position(l_dest, geoBounds, l_dx, l_dy);
+                SDL_RenderDrawLine(g_renderer, l_x, l_y, l_dx, l_dy);
+            }
         }
         SDL_RenderFillRects(g_renderer, l_cityRects.data(), l_cityRects.size());
         
