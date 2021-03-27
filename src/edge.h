@@ -21,7 +21,7 @@ struct Edge
         // Use the latitude and longitude as vectors
         double l_x = abs(p_end.get_lng() - p_start.get_lng());
         double l_y = abs(p_end.get_lat() - p_start.get_lat());
-        m_cost = sqrt(l_x + l_y);
+        m_cost = sqrt((l_x * l_x) + (l_y * l_y));
         m_dest = p_end.get_name();
     }
 };
