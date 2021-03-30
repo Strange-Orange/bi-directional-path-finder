@@ -33,3 +33,6 @@
 
 # csv data files
 data/*
+*.csv
+
+output/*
