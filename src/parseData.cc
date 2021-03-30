@@ -3,13 +3,16 @@
 #include "edge.h"
 #include "common.h"
 
+#include <iostream>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 #include <fstream>
 #include <algorithm>
 
 #include <cmath>
 
+const int g_SEGMENTS = 10;
 Bounds g_geoBounds;
 
 adjacencyList parse_data_csv(const char* p_filepath)
@@ -35,15 +38,15 @@ adjacencyList parse_data_csv(const char* p_filepath)
         std::getline(l_file, l_lng, '.');
         std::getline(l_file, l_lngd, ',');
 
-        int l_vlat = abs(stoi(l_lat + l_latd));
-        int l_vlng = abs(stoi(l_lng + l_lngd));
+        int l_vlat = (stoi(l_lat + l_latd));
+        int l_vlng = (stoi(l_lng + l_lngd));
         Vertex l_v(l_vlat, l_vlng, l_name);
         l_latvec.emplace_back(l_v);
         l_lngvec.emplace_back(l_v);
         // Move to next line
         std::getline(l_file, l_name);
     }
-
+    std::cout << l_latvec.size() << std::endl;
     std::sort(l_latvec.begin(), l_latvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.get_lat() < rhs.get_lat();});
     std::sort(l_lngvec.begin(), l_lngvec.end(), [](const Vertex& lhs, const Vertex& rhs){return lhs.get_lng() < rhs.get_lng();});
 
@@ -58,94 +61,149 @@ adjacencyList parse_data_csv(const char* p_filepath)
     return l_adj;
 }
 
-// Search vector for Vertex using longitude, return -1 if not found
-int binary_search_longitude(const std::vector<Vertex>& p_v, double p_item)
+// Search vector for Vertex using longitude
+bool binary_search_longitude(const std::vector<Vertex>& p_v, double p_item)
 {
     int l_low = 0, l_high = p_v.size() - 1;
     while (l_low <= l_high)
     {
         int l_mid = (l_low + l_high) / 2;
         if (p_v.at(l_mid).get_lng() == p_item)
-            return l_mid;
+            return true;
         else if (p_v.at(l_mid).get_lng() < p_item)
             l_low = l_mid + 1;
         else
             l_high = l_mid - 1;
-
-    }
-    // Not found 
-    return -1;
-}
-
-// If a Vertex is the closest in the x direction and the y direction at the same time make sure it is added only once to the adjacency list
-bool duplicate_neighbour(const std::vector<Edge>& p_n, const std::string& p_newN)
-{
-    // The most neighbours a Vertex can have is 4
-    for (const Edge& l_e: p_n)
-    {
-        if (l_e.m_dest == p_newN)
-            return true;
     }
     return false;
 }
 
-int get_east_neighbour(const std::vector<Edge>& p_n, const std::vector<Vertex>& p_lngs, size_t p_lngIndex)
+bool binary_search_latitude(const std::vector<Vertex>& p_v, double p_item)
 {
-    while (p_lngIndex < p_lngs.size())
+    int l_low = 0, l_high = p_v.size() - 1;
+    while (l_low <= l_high)
     {
-        if (!duplicate_neighbour(p_n, p_lngs.at(p_lngIndex).get_name()))
-        {
-            return p_lngIndex;
-        }
-        p_lngIndex++;
+        int l_mid = (l_low + l_high) / 2;
+        if (p_v.at(l_mid).get_lat() == p_item)
+            return true;
+        else if (p_v.at(l_mid).get_lat() < p_item)
+            l_low = l_mid + 1;
+        else
+            l_high = l_mid - 1;
     }
-    return -1;
+    return false;
 }
 
-int get_west_neighbour(const std::vector<Edge>& p_n, const std::vector<Vertex>& p_lngs, int p_lngIndex)
+inline int calc_distance(const Vertex& p_source, const Vertex& p_dest)
 {
-    while (p_lngIndex > -1)
+    int l_x = abs(p_source.get_lng() - p_dest.get_lng());
+    int l_y = abs(p_source.get_lng() - p_dest.get_lng());
+    return sqrt((l_x * l_x) + (l_y * l_y));
+}
+
+void create_row_segments(const std::vector<Vertex>& p_lats, vectorVertex2d& o_segments)
+{
+    int l_range = g_geoBounds.m_north - g_geoBounds.m_south;
+    int l_dist = abs(ceil(l_range / g_SEGMENTS));
+    int l_bound = g_geoBounds.m_south + l_dist;
+    size_t l_segIndex = 0;
+    for (size_t i = 0; i < g_SEGMENTS - 1; i++)
     {
-        if (!duplicate_neighbour(p_n, p_lngs.at(p_lngIndex).get_name()))
-        {
-            return p_lngIndex;
-        }
-        p_lngIndex--;
+        std::vector<Vertex> l_verticesInSeg;
+        while ((l_segIndex < p_lats.size()) && (p_lats.at(l_segIndex).get_lat() < l_bound + 1))
+            l_verticesInSeg.push_back(p_lats.at(l_segIndex++));
+        // Avoid making a copy
+        o_segments.push_back(std::move(l_verticesInSeg));
+        l_bound += l_dist;
     }
-    return -1;
+    // Add the last vertices in case of a rounding error
+    std::vector<Vertex> l_last;
+    while (l_segIndex < p_lats.size())
+        l_last.push_back(p_lats.at(l_segIndex++));
+    o_segments.push_back(std::move(l_last));
+}
+
+// Create 10 latitude segments. Place each vertex in the segment where its latitude fits in the latitude range of the segment
+void create_col_segments(const std::vector<Vertex>& p_lngs, vectorVertex2d& o_segments)
+{
+    int l_range = g_geoBounds.m_east - g_geoBounds.m_west;
+    int l_dist = abs(ceil(l_range / g_SEGMENTS));
+    int l_bound = g_geoBounds.m_west + l_dist;
+    size_t l_segIndex = 0;
+    for (size_t i = 0; i < g_SEGMENTS - 1; i++)
+    {
+        std::vector<Vertex> l_verticesInSeg;
+        while ((l_segIndex < p_lngs.size()) && (p_lngs.at(l_segIndex).get_lng() < l_bound + 1))
+            l_verticesInSeg.push_back(p_lngs.at(l_segIndex++));
+        // Avoid making a copy
+        o_segments.push_back(std::move(l_verticesInSeg));
+        l_bound += l_dist;
+    }
+    // Add the last vertices in case of a rounding error
+    std::vector<Vertex> l_last;
+    while (l_segIndex < p_lngs.size())
+        l_last.push_back(p_lngs.at(l_segIndex++));
+    o_segments.push_back(std::move(l_last));
+
+}
+
+void create_grid_segments(const vectorVertex2d& p_rows, const vectorVertex2d& p_cols, vectorVertex2d& o_grid)
+{
+    for (const std::vector<Vertex>& l_row: p_rows)
+    {
+        for (const std::vector<Vertex>& l_col: p_cols)
+        {
+            std::vector<Vertex> l_currentGridSpace;
+            for (const Vertex& l_cVertex: l_col)
+            {
+                if (binary_search_latitude(l_row, l_cVertex.get_lat()))
+                {
+                    l_currentGridSpace.push_back(l_cVertex);
+                }
+            }
+            o_grid.push_back(std::move(l_currentGridSpace));   
+        }
+    }
 }
 
 // For each Vertex (City) have a most 4 edges, reaching to the closest in North, East, South and West directions
 void create_adjacency_list(adjacencyList& p_adj, const std::vector<Vertex>& p_lats, const std::vector<Vertex>& p_lngs)
 {
-    for (size_t i = 0; i < p_lats.size(); i++)
+    vectorVertex2d l_rows;
+    vectorVertex2d l_cols;
+    create_row_segments(p_lats, l_rows);
+    create_col_segments(p_lngs, l_cols);
+    vectorVertex2d l_grid;
+    create_grid_segments(l_rows, l_cols, l_grid);
+    
+    for (const std::vector<Vertex>& l_segment: l_grid)
     {
-        // Add vertex to set of all vertices
-        g_geoBounds.m_cities[p_lats.at(i).get_name()] = p_lats.at(i);
-        // South and North
-        if (i > 0)
-            p_adj[p_lats.at(i)].emplace_back(p_lats.at(i), p_lats.at(i - 1));
-        if (i < p_lats.size() - 1)
-            p_adj[p_lats.at(i)].emplace_back(p_lats.at(i), p_lats.at(i + 1));
-        // West and East
-        int l_lngIndex = binary_search_longitude(p_lngs, p_lats.at(i).get_lng());
-        if (l_lngIndex != -1)
+        for (const Vertex& l_source: l_segment)
         {
-            int l_west = get_west_neighbour(p_adj.at(p_lats.at(i)), p_lngs, l_lngIndex - 1);
-            if (l_west != -1)
-                p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_west));
-
-            int l_east = get_east_neighbour(p_adj.at(p_lats.at(i)), p_lngs, l_lngIndex + 1);
-            if (l_east != -1)
-            {
-                p_adj.at(p_lats.at(i)).emplace_back(p_lats.at(i), p_lngs.at(l_east));
-            }
+            p_adj[l_source];
+            g_geoBounds.m_cities[l_source.get_name_c()] = l_source;
+            // for (const Vertex& l_dest: l_segment)
+            // {
+            //     if (l_source != l_dest)
+            //     {
+            //         p_adj.at(l_source).push_back({l_source, l_dest});
+            //     }
+            // }
         }
-    }    
+    }
+    // for (size_t i = 0; i < l_grid.size(); i++)
+    // {
+    //     std::cout << "Section: " << i << " : ";
+    //     for (const Vertex& p_v: l_grid.at(i))
+    //     {
+    //         std::cout << p_v.get_name_c() << ", ";
+    //     }
+    //     std::cout << std::endl;
+    // }
 }
 
-// Get the bound of the area parsed, a file must be parsed before and called to this function, otherwise all member will be 0
-Bounds get_bounds()
+// Get the bound of the area parsed, a file must be parsed before and called to this function, otherwise all members will be 0
+Bounds& get_bounds()
 {
     return g_geoBounds;
 }
