@@ -15,6 +15,7 @@ class Vertex
         Vertex(Vertex&& p_v);
         Vertex& operator=(const Vertex& rhs);
         bool operator==(const Vertex& rhs) const;
+        bool operator!=(const Vertex& rhs) const;
         bool operator>(const Vertex& rhs) const;
         bool operator>=(const Vertex& rhs) const;
         bool operator<(const Vertex& rhs) const;
@@ -23,7 +24,6 @@ class Vertex
         std::string get_name() const;
         const std::string& get_name_c() const;
         int get_cost() const;
-
     private:
         int m_lat;
         int m_lng;
