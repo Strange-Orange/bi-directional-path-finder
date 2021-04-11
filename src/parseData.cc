@@ -279,7 +279,7 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
         {
             const Vertex& l_eastPoint = p_grid.at(i).at(p_segmentInfo.at(i).m_eastIndex);
             int l_lngViewingSegment = i;
-            while (++l_lngViewingSegment < g_SEGMENTS)
+            while (++l_lngViewingSegment % 10 != 0)
             {
                 if (p_segmentInfo.at(l_lngViewingSegment).m_westIndex != -1)
                 {
@@ -296,7 +296,7 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
             {
                 if (p_segmentInfo.at(l_latViewingSegment).m_southIndex != -1)
                 {
-                    const Vertex& l_neighbourSouthPoint = p_grid.at(i + g_SEGMENTS).at(p_segmentInfo.at(i + g_SEGMENTS).m_southIndex);
+                    const Vertex& l_neighbourSouthPoint = p_grid.at(l_latViewingSegment).at(p_segmentInfo.at(l_latViewingSegment).m_southIndex);
                     p_adj.at(l_northPoint).push_back({l_northPoint, l_neighbourSouthPoint});
                     p_adj.at(l_neighbourSouthPoint).push_back({l_neighbourSouthPoint, l_northPoint});
                     break;
