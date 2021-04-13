@@ -100,12 +100,19 @@ class IndexedPriorityQueue
         void insert(T p_item)
         {
             // Don't insert duplicates
-            if (m_heapMap.find(p_item) == m_heapMap.end())
+            if (!find(p_item))
             {
                 m_heap.push_back(p_item);
                 m_heapMap[p_item] = m_heap.size() - 1;
                 bubble_up(m_heap.size() - 1);
             }
+        }
+
+        bool find(const T& p_item)
+        {
+            if (m_heapMap.find(p_item) == m_heapMap.end())
+                return false;
+            return true;
         }
 
         void bubble_up(int p_index)
