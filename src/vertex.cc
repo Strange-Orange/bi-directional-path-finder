@@ -70,3 +70,8 @@ int Vertex::get_cost() const
 {
     return m_cost;
 }
+
+void Vertex::set_cost(int p_cost)
+{
+    m_cost = p_cost;
+}

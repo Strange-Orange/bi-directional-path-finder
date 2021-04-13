@@ -24,6 +24,7 @@ class Vertex
         std::string get_name() const;
         const std::string& get_name_c() const;
         int get_cost() const;
+        void set_cost(int p_cost);
     private:
         int m_lat;
         int m_lng;
@@ -44,7 +45,7 @@ struct VertexCompare
 {
     bool operator()(const Vertex& lhs, const Vertex& rhs) const
     {
-        return (lhs.get_lat() == rhs.get_lat()) && (lhs.get_lng() == rhs.get_lng()) && (lhs.get_name() == rhs.get_name());
+        return (lhs.get_lat() == rhs.get_lat()) && (lhs.get_lng() == rhs.get_lng()) && (lhs.get_name() == rhs.get_name()) && (lhs.get_cost() == rhs.get_cost());
     }
 };
 
