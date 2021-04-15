@@ -89,6 +89,9 @@ class IndexedPriorityQueue
 
         T extract_min()
         {
+            if (m_heap.empty())
+                throw std::out_of_range("Priority queue is empty");
+                
             T l_min = m_heap.at(0);
             swap(0, m_heap.size() - 1);
             m_heap.erase(m_heap.begin() + (m_heap.size() - 1));
