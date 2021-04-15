@@ -97,7 +97,7 @@ class IndexedPriorityQueue
             return l_min;
         }
 
-        void insert(T p_item)
+        bool insert(T p_item)
         {
             // Don't insert duplicates
             if (!find(p_item))
@@ -105,7 +105,9 @@ class IndexedPriorityQueue
                 m_heap.push_back(p_item);
                 m_heapMap[p_item] = m_heap.size() - 1;
                 bubble_up(m_heap.size() - 1);
+                return true;
             }
+            return false;
         }
 
         bool find(const T& p_item)
