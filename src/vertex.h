@@ -45,7 +45,7 @@ struct VertexCompare
 {
     bool operator()(const Vertex& lhs, const Vertex& rhs) const
     {
-        return (lhs.get_lat() == rhs.get_lat()) && (lhs.get_lng() == rhs.get_lng()) && (lhs.get_name() == rhs.get_name()) && (lhs.get_cost() == rhs.get_cost());
+        return (lhs.get_lat() == rhs.get_lat()) && (lhs.get_lng() == rhs.get_lng()) && (lhs.get_name() == rhs.get_name());
     }
 };
 

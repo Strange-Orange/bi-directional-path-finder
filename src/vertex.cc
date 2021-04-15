@@ -17,6 +17,7 @@ Vertex& Vertex::operator=(const Vertex& rhs)
     this->m_lat = rhs.m_lat;
     this->m_lng = rhs.m_lng;
     this->m_name = rhs.m_name;
+    this->m_cost = rhs.m_cost;
     return *this;
 }
 
