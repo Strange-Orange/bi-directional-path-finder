@@ -3,7 +3,6 @@
 #include "edge.h"
 #include "common.h"
 
-#include <iostream>
 #include <unordered_map>
 #include <unordered_set>
 #include <array>
@@ -21,11 +20,6 @@
 #define DIR_SOUTH 0x04
 #define DIR_WEST 0x08
 #define DIR_ALL 0xF
-#define DIR_NORTH_EAST 0x10
-#define DIR_SOUTH_EAST 0x20
-#define DIR_SOUTH_WEST 0x40
-#define DIR_NORTH_WEST 0x80
-
 
 #define DIRECTIONS 8
 
@@ -92,22 +86,6 @@ adjacencyList parse_data_csv(const char* p_filepath)
     adjacencyList l_adj;
     create_adjacency_list(l_adj, l_latvec, l_lngvec);
     return l_adj;
-}
-
-int binary_search_longitude(const std::vector<Vertex>& p_vertices, const Vertex& p_item)
-{
-    int l_low = 0, l_high = p_vertices.size() - 1;
-    while (l_low <= l_high)
-    {
-        int l_mid = (l_low + l_high) / 2;
-        if (p_vertices.at(l_mid).get_lng() == p_item.get_lng())
-            return l_mid;
-        else if (p_vertices.at(l_mid).get_lng() < p_item.get_lng())
-            l_low = l_mid + 1;
-        else
-            l_high = l_mid - 1;
-    }
-    return -1;
 }
 
 int binary_search_latitude(const std::vector<Vertex>& p_vertices, const Vertex& p_item)
@@ -208,14 +186,14 @@ void create_row_segments(const std::vector<Vertex>& p_lats, vectorVertex2d& o_se
         while ((l_segIndex < p_lats.size()) && (p_lats.at(l_segIndex).get_lat() < l_bound + 1))
             l_verticesInSeg.push_back(p_lats.at(l_segIndex++));
 
-        o_segments.push_back(l_verticesInSeg);
+        o_segments.push_back(std::move(l_verticesInSeg));
         l_bound += l_dist;
     }
     // Add the last vertices in case of a rounding error
     std::vector<Vertex> l_last;
     while (l_segIndex < p_lats.size())
         l_last.push_back(p_lats.at(l_segIndex++));
-    o_segments.push_back(l_last);
+    o_segments.push_back(std::move(l_last));
 }
 
 void create_col_segments(const std::vector<Vertex>& p_lngs, vectorVertex2d& o_segments)
@@ -229,14 +207,14 @@ void create_col_segments(const std::vector<Vertex>& p_lngs, vectorVertex2d& o_se
         std::vector<Vertex> l_verticesInSeg;
         while ((l_segIndex < p_lngs.size()) && (p_lngs.at(l_segIndex).get_lng() < l_bound + 1))
             l_verticesInSeg.push_back(p_lngs.at(l_segIndex++));
-        o_segments.push_back(l_verticesInSeg);
+        o_segments.push_back(std::move(l_verticesInSeg));
         l_bound += l_dist;
     }
     // Add the last vertices in case of a rounding error
     std::vector<Vertex> l_last;
     while (l_segIndex < p_lngs.size())
         l_last.push_back(p_lngs.at(l_segIndex++));
-    o_segments.push_back(l_last);
+    o_segments.push_back(std::move(l_last));
 
 }
 
@@ -269,7 +247,6 @@ void create_grid_segments(const vectorVertex2d& p_rows, const  vectorVertex2d& p
                     l_segmentVertices.push_back(l_v);
                 }
             }
-            // Avoid making a copy
             o_grid.push_back(std::move(l_segmentVertices));
             o_segmentInfo.at(l_segmentIndex++) = std::move(l_segment);
         }
@@ -339,7 +316,7 @@ void find_neighbours(const Vertex& p_current, const std::vector<Vertex>& p_segme
     for (int i = 0; i < 4; i++)
     {
         if (l_indices[i] != -1)
-            o_n.push_back({p_current, p_segment.at(l_indices[i])});
+            o_n.emplace_back(p_current, p_segment.at(l_indices[i]));
     }
 }
 
@@ -422,9 +399,6 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
         // If the currentSegment is empty skip it
         if (p_grid.at(l_currentSegment).empty())
             continue;
-
-        if (l_currentSegment == 76)
-            std::cout << "We are here" << std::endl;
 
         std::unordered_set<int> l_visited;
         int l_level = 1;

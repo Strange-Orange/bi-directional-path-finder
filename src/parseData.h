@@ -33,12 +33,10 @@ struct Segment
 // Try changing the size of the segments depending on the number of vertices inside a segment
 
 adjacencyList parse_data_csv(const char* p_filepath);
-int binary_search_longitude(const std::vector<Vertex>& p_vertices, const Vertex& p_item);
 int binary_search_latitude(const std::vector<Vertex>& p_vertices, const Vertex& p_item);
 inline int calc_distance(const Vertex& p_source, const Vertex& p_dest);
 inline bool segment_in_bounds(int p_index, int p_dirIndex);
 inline bool opposite_directions(int p_index, uint8_t l_directions);
-std::vector<size_t> valid_directions(int p_center);
 uint8_t direction_from_segment(int p_center, int p_viewing);
 void create_row_segments(const std::vector<Vertex>& p_lats, vectorVertex2d& o_segments);
 void create_col_segments(const std::vector<Vertex>& p_lngs, vectorVertex2d& o_segments);
