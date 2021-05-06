@@ -3,7 +3,10 @@
 #include "edge.h"
 #include "common.h"
 
+#include <iostream>
 #include <unordered_map>
+#include <unordered_set>
+#include <array>
 #include <vector>
 #include <utility>
 #include <fstream>
@@ -17,8 +20,32 @@
 #define DIR_EAST 0x02
 #define DIR_SOUTH 0x04
 #define DIR_WEST 0x08
+#define DIR_ALL 0xF
+#define DIR_NORTH_EAST 0x10
+#define DIR_SOUTH_EAST 0x20
+#define DIR_SOUTH_WEST 0x40
+#define DIR_NORTH_WEST 0x80
 
-const int g_SEGMENTS = 10;
+
+#define DIRECTIONS 8
+
+const int g_SEGMENTS = 50;
+const int g_TOTALSEGMENTS = g_SEGMENTS * g_SEGMENTS;
+// Values to be added to move between segments
+// Ordering is North, east, south, west, north east, south east, south west and north west
+const std::array<int, DIRECTIONS> g_touchingSegments {g_SEGMENTS, 1, -g_SEGMENTS, -1, g_SEGMENTS + 1, -g_SEGMENTS + 1, -g_SEGMENTS - 1, g_SEGMENTS - 1};
+const std::array<uint8_t, DIRECTIONS> g_dirMasks 
+{
+    DIR_NORTH,
+    DIR_EAST,
+    DIR_SOUTH,
+    DIR_WEST, 
+    DIR_NORTH | DIR_EAST,
+    DIR_SOUTH | DIR_EAST,
+    DIR_SOUTH | DIR_WEST,
+    DIR_NORTH | DIR_WEST
+};
+
 Bounds g_geoBounds;
 
 adjacencyList parse_data_csv(const char* p_filepath)
@@ -67,37 +94,36 @@ adjacencyList parse_data_csv(const char* p_filepath)
     return l_adj;
 }
 
-// Search vector for Vertex using longitude
-bool binary_search_longitude(const std::vector<Vertex>& p_v, double p_item)
+int binary_search_longitude(const std::vector<Vertex>& p_vertices, const Vertex& p_item)
 {
-    int l_low = 0, l_high = p_v.size() - 1;
+    int l_low = 0, l_high = p_vertices.size() - 1;
     while (l_low <= l_high)
     {
         int l_mid = (l_low + l_high) / 2;
-        if (p_v.at(l_mid).get_lng() == p_item)
-            return true;
-        else if (p_v.at(l_mid).get_lng() < p_item)
+        if (p_vertices.at(l_mid).get_lng() == p_item.get_lng())
+            return l_mid;
+        else if (p_vertices.at(l_mid).get_lng() < p_item.get_lng())
             l_low = l_mid + 1;
         else
             l_high = l_mid - 1;
     }
-    return false;
+    return -1;
 }
 
-bool binary_search_latitude(const std::vector<Vertex>& p_v, double p_item)
+int binary_search_latitude(const std::vector<Vertex>& p_vertices, const Vertex& p_item)
 {
-    int l_low = 0, l_high = p_v.size() - 1;
+    int l_low = 0, l_high = p_vertices.size() - 1;
     while (l_low <= l_high)
     {
         int l_mid = (l_low + l_high) / 2;
-        if (p_v.at(l_mid).get_lat() == p_item)
-            return true;
-        else if (p_v.at(l_mid).get_lat() < p_item)
+        if (p_vertices.at(l_mid).get_lat() == p_item.get_lat())
+            return l_mid;
+        else if (p_vertices.at(l_mid).get_lat() < p_item.get_lat())
             l_low = l_mid + 1;
         else
             l_high = l_mid - 1;
     }
-    return false;
+    return -1;
 }
 
 inline int calc_distance(const Vertex& p_source, const Vertex& p_dest)
@@ -105,6 +131,69 @@ inline int calc_distance(const Vertex& p_source, const Vertex& p_dest)
     int l_x = abs(p_source.get_lng() - p_dest.get_lng());
     int l_y = abs(p_source.get_lng() - p_dest.get_lng());
     return sqrt((l_x * l_x) + (l_y * l_y));
+}
+
+// Make sure a segment and a movement do not move out of bounds of the grid
+inline bool segment_in_bounds(int p_index, int p_dirIndex)
+{
+    uint8_t l_dirMask = g_dirMasks.at(p_dirIndex);
+    int l_rem = p_index % g_SEGMENTS;
+    // Can't go west
+    if (l_rem == 0 && l_dirMask & DIR_WEST)
+        return false;
+    // Can't go east
+    if ((l_rem == g_SEGMENTS - 1) && l_dirMask & DIR_EAST)
+        return false;
+
+    int l_newIndex = p_index + g_touchingSegments.at(p_dirIndex);
+    if (l_newIndex >= (g_TOTALSEGMENTS) || l_newIndex < 0)
+        return false;
+
+    return true;
+}
+
+// Check if the bit field has 2 opposite directions set, if segment is on edge make sure just 1 bit is set
+inline bool opposite_directions(int p_index, uint8_t l_directions)
+{
+    int l_rem = p_index % g_SEGMENTS;
+    // Segment is on the edge, west, east, north, south
+    if (l_rem == 0 || l_rem == g_SEGMENTS - 1 || p_index > (g_TOTALSEGMENTS - g_SEGMENTS) || p_index < g_SEGMENTS)
+    {
+        if (l_directions & DIR_ALL)
+            return true;
+    }
+    if ((l_directions & DIR_NORTH) && (l_directions & DIR_SOUTH))
+        return true;
+    if ((l_directions & DIR_EAST) && (l_directions & DIR_WEST))
+        return true;
+    
+    return false;
+}
+
+// Return the direction that the p_viewing is from the center, this works on the assumption that all the segments are stored in a perfect square
+uint8_t direction_from_segment(int p_center, int p_viewing)
+{
+    if (p_center == p_viewing)
+        return 0;
+
+    uint8_t l_dir = 0;
+    int l_rowDiff = p_viewing & g_SEGMENTS;
+    // Check north or south
+    if (p_viewing + (g_SEGMENTS - l_rowDiff) > p_center)
+        l_dir = l_dir | DIR_NORTH;
+    // Not north is it souths
+    else if (p_viewing - l_rowDiff < p_center)
+        l_dir = l_dir | DIR_SOUTH;
+
+    // Check east or west
+    int l_centerPosOnRow = p_center % g_SEGMENTS;
+    int l_viewingPosOnRow = p_viewing % g_SEGMENTS; 
+    if (l_centerPosOnRow < l_viewingPosOnRow)
+        l_dir = l_dir | DIR_EAST;
+    else if (l_centerPosOnRow > l_viewingPosOnRow)
+        l_dir = l_dir | DIR_WEST;
+
+    return l_dir;
 }
 
 void create_row_segments(const std::vector<Vertex>& p_lats, vectorVertex2d& o_segments)
@@ -162,7 +251,7 @@ void create_grid_segments(const vectorVertex2d& p_rows, const  vectorVertex2d& p
             Segment l_segment{l_segmentIndex, -1, -1, -1, -1};
             for (const Vertex& l_v: l_col)
             {
-                if (binary_search_latitude(l_row, l_v.get_lat()))
+                if (binary_search_latitude(l_row, l_v) != -1)
                 {
                     // Update the segment info, if there is only 1 vertex in a segment then it is the "furthest" in all directions
                     if (l_segment.m_northIndex == -1 || l_v.get_lat() > l_segmentVertices.at(l_segment.m_northIndex).get_lat())
@@ -210,7 +299,7 @@ void find_neighbours(const Vertex& p_current, const std::vector<Vertex>& p_segme
     int l_eastDist = INT_MAX;
     int l_southDist = INT_MAX;
     int l_westDist = INT_MAX;
-    // Order of indices is north, east, south west 
+    // Order of indices is north, east, south, west 
     int l_indices[4];
     // Initialize all the values to -1
     for (int i = 0; i < 4; i++)
@@ -270,42 +359,117 @@ void connect_vertices(adjacencyList& p_adj, const vectorVertex2d& p_grid)
     }
 }
 
+// Return a pair of vertices that can be used to connect segments p_dest contains the destination index in the grid and its directional relative to the source
+std::pair<Vertex, Vertex> vertices_to_connect_segments(const vectorVertex2d& p_grid, int p_src, const std::pair<size_t, uint8_t>& p_dest, const std::vector<Segment>& p_segmentInfo)
+{
+    const Segment& l_srcInfo = p_segmentInfo.at(p_src);
+    const Segment& l_destInfo = p_segmentInfo.at(p_dest.first);
+    // The potential vertices for joining the segments
+    std::vector<Vertex> l_srcSegmentJoin;
+    std::vector<Vertex> l_destSegmentJoin;
+    if (p_dest.second & DIR_NORTH)
+    {
+        l_srcSegmentJoin.push_back(p_grid.at(p_src).at(l_srcInfo.m_northIndex));
+        l_destSegmentJoin.push_back(p_grid.at(p_dest.first).at(l_destInfo.m_southIndex));
+    }
+    else
+    {
+        l_srcSegmentJoin.push_back(p_grid.at(p_src).at(l_srcInfo.m_southIndex));
+        l_destSegmentJoin.push_back(p_grid.at(p_dest.first).at(l_destInfo.m_northIndex));
+    }
+
+    if (p_dest.second & DIR_EAST)
+    {
+        l_srcSegmentJoin.push_back(p_grid.at(p_src).at(l_srcInfo.m_eastIndex));
+        l_destSegmentJoin.push_back(p_grid.at(p_dest.first).at(l_destInfo.m_westIndex));
+    }
+    else
+    {
+        l_srcSegmentJoin.push_back(p_grid.at(p_src).at(l_srcInfo.m_westIndex));
+        l_destSegmentJoin.push_back(p_grid.at(p_dest.first).at(l_destInfo.m_eastIndex));
+    }
+
+    // Find the closest pairing of vertices
+    std::pair<int, int> l_closestPair;
+    int l_closestDist = INT_MAX;
+    for (size_t i = 0; i < l_srcSegmentJoin.size(); i++)
+    {
+        for (size_t j = 0; j < l_destSegmentJoin.size(); j++)
+        {
+            double l_x = abs(l_srcSegmentJoin.at(i).get_lng() - l_destSegmentJoin.at(j).get_lng());
+            double l_y = abs(l_srcSegmentJoin.at(i).get_lat() - l_destSegmentJoin.at(j).get_lat());
+            double l_distance = (l_x * l_x) + (l_y * l_y);
+            if (sqrt(l_distance < l_closestDist))
+            {
+                l_closestDist = l_distance;
+                l_closestPair.first = i;
+                l_closestPair.second = j;
+            }
+        }
+    }
+
+    return {l_srcSegmentJoin.at(l_closestPair.first), l_destSegmentJoin.at(l_closestPair.second)};
+}
+
 void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std::vector<Segment>& p_segmentInfo)
 {
-    for (size_t i = 0; i < p_grid.size() - 1; i++)
+    // Connect a Segments together, a segment unless it is on an edge is surround by 8 other segments which can be divided into
+    // 4 groups, top 3 north, botton 3 south, right 3 east and left 3 west. There is some overlay in groups.
+    // The idea is to connect the segment to all segments until it is connect on 2 opposite sides or reaches and edge.
+    // Use bfs to find the nearest 2 segments that contain vertices in opposite directions
+    for (size_t l_currentSegment = 0; l_currentSegment < p_grid.size(); l_currentSegment++)
     {
-        // Connect segments on the x axis
-        if (p_grid.at(i).size() > 0)
+        // If the currentSegment is empty skip it
+        if (p_grid.at(l_currentSegment).empty())
+            continue;
+
+        if (l_currentSegment == 76)
+            std::cout << "We are here" << std::endl;
+
+        std::unordered_set<int> l_visited;
+        int l_level = 1;
+        std::vector<size_t> l_frontier {l_currentSegment};
+        uint8_t l_neighbourDirections = 0;
+        // The first value in the pair is the segments index in the grid and the second is its direction in relation to the current segment
+        std::vector<std::pair<size_t, uint8_t>> l_neighbours;
+        while (!opposite_directions(l_currentSegment, l_neighbourDirections) && !l_frontier.empty())
         {
-            const Vertex& l_eastPoint = p_grid.at(i).at(p_segmentInfo.at(i).m_eastIndex);
-            int l_lngViewingSegment = i;
-            while (++l_lngViewingSegment % 10 != 0)
+            std::vector<size_t> l_next;
+            for (int l_viewing: l_frontier)
             {
-                if (p_segmentInfo.at(l_lngViewingSegment).m_westIndex != -1)
+                for (int i = 0; i < DIRECTIONS; i++)
                 {
-                    const Vertex& l_neighbourWestPoint = p_grid.at(l_lngViewingSegment).at(p_segmentInfo.at(l_lngViewingSegment).m_westIndex);
-                    p_adj.at(l_eastPoint).push_back({l_eastPoint, l_neighbourWestPoint});
-                    p_adj.at(l_neighbourWestPoint).push_back({l_neighbourWestPoint, l_eastPoint});
-                    break;
+                    int l_touching = l_viewing + g_touchingSegments[i];
+                    if (segment_in_bounds(l_viewing, i) && l_visited.find(l_touching) == l_visited.end())
+                    {
+                        l_visited.insert(l_touching);
+                        l_next.push_back(l_touching);
+                        // Does the segment being touched have any vertices
+                        if (!p_grid.at(l_touching).empty())
+                        {
+                            uint8_t l_touchingDirection = direction_from_segment(l_currentSegment, l_touching);
+                            // If it is the first layer always add it otherwise only add it if the segment is in a new direction
+                            if (l_level == 1 || (l_neighbourDirections & l_touchingDirection) == 0)
+                            {
+                                l_neighbourDirections = l_neighbourDirections | l_touchingDirection;
+                                l_neighbours.push_back({l_touching, l_touchingDirection});
+                            }
+                        }   
+                    }
                 }
             }
-            // Connect segments on the y axis
-            const Vertex& l_northPoint = p_grid.at(i).at(p_segmentInfo.at(i).m_northIndex);
-            int l_latViewingSegment = i + g_SEGMENTS;
-            while (l_latViewingSegment < (g_SEGMENTS * g_SEGMENTS) - g_SEGMENTS)
-            {
-                if (p_segmentInfo.at(l_latViewingSegment).m_southIndex != -1)
-                {
-                    const Vertex& l_neighbourSouthPoint = p_grid.at(l_latViewingSegment).at(p_segmentInfo.at(l_latViewingSegment).m_southIndex);
-                    p_adj.at(l_northPoint).push_back({l_northPoint, l_neighbourSouthPoint});
-                    p_adj.at(l_neighbourSouthPoint).push_back({l_neighbourSouthPoint, l_northPoint});
-                    break;
-                }
-                l_latViewingSegment += g_SEGMENTS;
-            }   
+            l_frontier = std::move(l_next);
+            l_level++;
+        }
+        // Connect segments
+        for (const auto l_n: l_neighbours)
+        {
+            const std::pair<Vertex, Vertex> l_couple = vertices_to_connect_segments(p_grid, l_currentSegment, l_n, p_segmentInfo);
+            p_adj[l_couple.first].push_back({l_couple.first, l_couple.second});
         }
     }
 }
+
 // For each Vertex (City) have a most 4 edges, reaching to the closest in North, East, South and West directions
 void create_adjacency_list(adjacencyList& p_adj, const std::vector<Vertex>& p_lats, const std::vector<Vertex>& p_lngs)
 {
@@ -314,7 +478,7 @@ void create_adjacency_list(adjacencyList& p_adj, const std::vector<Vertex>& p_la
     create_row_segments(p_lats, l_rows);
     create_col_segments(p_lngs, l_cols);
     vectorVertex2d l_grid;
-    std::vector<Segment> l_segmentInfo(g_SEGMENTS * g_SEGMENTS);
+    std::vector<Segment> l_segmentInfo(g_TOTALSEGMENTS);
     create_grid_segments(l_rows, l_cols, l_grid, l_segmentInfo);
 
     connect_vertices(p_adj, l_grid);
