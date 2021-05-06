@@ -192,13 +192,24 @@ int main(int argc, char* args[])
         return 1;
 
     adjacencyList l_adj;
-    if (argc > 1)
+    if (argc == 4)
         l_adj = parse_data_csv(args[1]);
+
     // Look for a default in the current directory named data.csv
     else
-        l_adj = parse_data_csv("./data.csv");
+    {
+        std::cout << "Enter a csv file, start point and end point\n";
+        return 1;        
+    }
 
-    StartEnd l_se = place_name_to_vertex("Beijing", "Shenzhen", l_adj);
+    StartEnd l_se = place_name_to_vertex(args[2], args[3], l_adj);
+    // If the start point for the end point are not in the adjacency list return 1
+    if (l_se.m_start.get_name_c() == "***" || l_se.m_end.get_name_c() == "***")
+    {
+        std::cout << "Start or end point are not in the csv file\n";
+        return 1;
+    }
+    
     RouteData l_route = bi_directional_dijkstra(l_adj, l_se.m_start, l_se.m_end);
     for (const Vertex& l_cv: l_route.m_vertices)
         std::cout << l_cv.get_name() << " : ";
