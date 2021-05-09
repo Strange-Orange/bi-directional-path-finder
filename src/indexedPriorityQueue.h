@@ -70,6 +70,11 @@ class IndexedPriorityQueue
             return m_heap.size() == 0;
         }
 
+        const T* data() const
+        {
+            return m_heap.data();
+        }
+
         void min_heapify(size_t p_index)
         {
             bubble_down(p_index);
