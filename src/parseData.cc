@@ -3,7 +3,7 @@
 #include "edge.h"
 #include "common.h"
 
-#include <unordered_map>
+#include <string>
 #include <unordered_set>
 #include <array>
 #include <vector>
