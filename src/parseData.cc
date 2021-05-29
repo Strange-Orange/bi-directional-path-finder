@@ -3,6 +3,7 @@
 #include "edge.h"
 #include "common.h"
 
+#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <array>
@@ -131,18 +132,18 @@ inline bool segment_in_bounds(int p_index, int p_dirIndex)
 }
 
 // Check if the bit field has 2 opposite directions set, if segment is on edge make sure just 1 bit is set
-inline bool opposite_directions(int p_index, uint8_t l_directions)
+inline bool opposite_directions(int p_index, uint8_t p_directions)
 {
     int l_rem = p_index % g_SEGMENTS;
     // Segment is on the edge, west, east, north, south
     if (l_rem == 0 || l_rem == g_SEGMENTS - 1 || p_index > (g_TOTALSEGMENTS - g_SEGMENTS) || p_index < g_SEGMENTS)
     {
-        if (l_directions & DIR_ALL)
+        if (p_directions & DIR_ALL)
             return true;
     }
-    if ((l_directions & DIR_NORTH) && (l_directions & DIR_SOUTH))
+    if ((p_directions & DIR_NORTH) && (p_directions & DIR_SOUTH))
         return true;
-    if ((l_directions & DIR_EAST) && (l_directions & DIR_WEST))
+    if ((p_directions & DIR_EAST) && (p_directions & DIR_WEST))
         return true;
     
     return false;
@@ -159,7 +160,7 @@ uint8_t direction_from_segment(int p_center, int p_viewing)
     // Check north or south
     if (p_viewing + (g_SEGMENTS - l_rowDiff) > p_center)
         l_dir = l_dir | DIR_NORTH;
-    // Not north is it souths
+    // Must no just be a lower value but a lower row
     else if (p_viewing - l_rowDiff < p_center)
         l_dir = l_dir | DIR_SOUTH;
 
@@ -172,6 +173,22 @@ uint8_t direction_from_segment(int p_center, int p_viewing)
         l_dir = l_dir | DIR_WEST;
 
     return l_dir;
+}
+
+// Invert the directions of if a bit field is north east invert it to south west Example 0b00000011 to 0b00001100 
+inline uint8_t invert_directions(uint8_t p_directions)
+{
+    uint8_t l_output = 0;
+    if (p_directions & DIR_NORTH)
+        l_output = l_output | DIR_SOUTH;
+    if (p_directions & DIR_SOUTH)
+        l_output = l_output | DIR_NORTH;
+    if (p_directions & DIR_EAST)
+        l_output = l_output | DIR_WEST;
+    if (p_directions & DIR_WEST)
+        l_output = l_output | DIR_EAST;
+
+    return l_output;
 }
 
 void create_row_segments(const std::vector<Vertex>& p_lats, vectorVertex2d& o_segments)
@@ -384,7 +401,7 @@ std::pair<Vertex, Vertex> vertices_to_connect_segments(const vectorVertex2d& p_g
             }
         }
     }
-
+    // First vertex in the pair is src second is the destination
     return {l_srcSegmentJoin.at(l_closestPair.first), l_destSegmentJoin.at(l_closestPair.second)};
 }
 
@@ -394,16 +411,26 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
     // 4 groups, top 3 north, botton 3 south, right 3 east and left 3 west. There is some overlay in groups.
     // The idea is to connect the segment to all segments until it is connect on 2 opposite sides or reaches and edge.
     // Use bfs to find the nearest 2 segments that contain vertices in opposite directions
+
+    // Keep track of connections made between segments so that they don't have to be made twice
+    uint8_t l_segmentDirections[g_TOTALSEGMENTS];
+    for (int i = 0; i < g_TOTALSEGMENTS; i++)
+        l_segmentDirections[i] = 0;
+
     for (size_t l_currentSegment = 0; l_currentSegment < p_grid.size(); l_currentSegment++)
     {
         // If the currentSegment is empty skip it
         if (p_grid.at(l_currentSegment).empty())
             continue;
 
+        if (l_currentSegment == 2485)
+            std::cout << "We are here!" << std::endl;
+
         std::unordered_set<int> l_visited;
+        l_visited.insert(l_currentSegment);
         int l_level = 1;
         std::vector<size_t> l_frontier {l_currentSegment};
-        uint8_t l_neighbourDirections = 0;
+        uint8_t l_neighbourDirections = l_segmentDirections[l_currentSegment];
         // The first value in the pair is the segments index in the grid and the second is its direction in relation to the current segment
         std::vector<std::pair<size_t, uint8_t>> l_neighbours;
         while (!opposite_directions(l_currentSegment, l_neighbourDirections) && !l_frontier.empty())
@@ -413,12 +440,12 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
             {
                 for (int i = 0; i < DIRECTIONS; i++)
                 {
-                    int l_touching = l_viewing + g_touchingSegments[i];
+                    size_t l_touching = l_viewing + g_touchingSegments[i];
                     if (segment_in_bounds(l_viewing, i) && l_visited.find(l_touching) == l_visited.end())
                     {
                         l_visited.insert(l_touching);
                         l_next.push_back(l_touching);
-                        // Does the segment being touched have any vertices
+                        // Does the segment being touched have any vertices 
                         if (!p_grid.at(l_touching).empty())
                         {
                             uint8_t l_touchingDirection = direction_from_segment(l_currentSegment, l_touching);
@@ -435,11 +462,13 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
             l_frontier = std::move(l_next);
             l_level++;
         }
-        // Connect segments
+        // Connect segments in both directions
         for (const auto l_n: l_neighbours)
         {
             const std::pair<Vertex, Vertex> l_couple = vertices_to_connect_segments(p_grid, l_currentSegment, l_n, p_segmentInfo);
             p_adj[l_couple.first].push_back({l_couple.first, l_couple.second});
+            p_adj[l_couple.second].push_back({l_couple.second, l_couple.first});
+            l_segmentDirections[l_n.first] = invert_directions(l_n.second);
         }
     }
 }

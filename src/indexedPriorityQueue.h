@@ -70,9 +70,9 @@ class IndexedPriorityQueue
             return m_heap.size() == 0;
         }
 
-        const T* data() const
+        const std::vector<T>& data() const
         {
-            return m_heap.data();
+            return m_heap;
         }
 
         void min_heapify(size_t p_index)

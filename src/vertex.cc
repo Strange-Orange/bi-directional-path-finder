@@ -1,5 +1,7 @@
 #include "vertex.h"
 
+#include <utility>
+
 Vertex::Vertex()
     : m_lat(0), m_lng(0), m_name("***") {}
 
@@ -9,8 +11,8 @@ Vertex::Vertex(int p_lat, int p_lng, std::string p_name)
 Vertex::Vertex(const Vertex& p_v)
     : m_lat(p_v.m_lat), m_lng(p_v.m_lng), m_name(p_v.m_name), m_cost(p_v.m_cost) {};
 
-Vertex::Vertex(Vertex&& p_v)
-    : m_lat(p_v.m_lat), m_lng(p_v.m_lng), m_name(p_v.m_name), m_cost(p_v.m_cost) {};
+Vertex::Vertex(Vertex&& p_v) = default;
+    // : m_lat(std::move(p_v.m_lat)), m_lng(std::move(p_v.m_lng)), m_name(std::move(p_v.m_name)), m_cost(std::move(p_v.m_cost)) {};
 
 Vertex& Vertex::operator=(const Vertex& rhs)
 {

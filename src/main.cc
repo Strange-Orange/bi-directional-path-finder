@@ -9,19 +9,30 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <functional>
 #include <SDL2/SDL.h>
 
 #include <limits.h>
+#include <ctime>
 
 SDL_Window* g_window = nullptr;
 SDL_Renderer* g_renderer = nullptr;
+
+std::mutex g_mtx;
 
 bool init();
 void quit();
 inline void lat_lng_position(int p_lat, int p_lng, const Bounds& p_bounds, int& o_x, int& o_y);
 StartEnd place_name_to_vertex(const std::string& p_start, const std::string& p_end, const adjacencyList& p_adj);
 void get_edges_in_route(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const previousVertexMap& p_prevMap, const adjacencyList& p_adj);
+void construct_shortest_path(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const SearchData* const ptr_sd);
+void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visitedVertices, std::atomic<bool>& p_met, Vertex& p_meetingPoint, SearchData* ptr_sd, std::vector<Vertex>& o_lastFrontier);
 RouteData bi_directional_dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end);
+RouteData dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end);
+
 // Initialize SDL and create window and renderer
 bool init()
 {
@@ -64,6 +75,7 @@ void quit()
     SDL_Quit();
 }
 
+// Convert latitude and longitude to a x and y coordinate
 inline void lat_lng_position(int p_lat, int p_lng, const Bounds& p_bounds, int& o_x, int& o_y)
 {
     int l_xrange = p_bounds.m_east - p_bounds.m_west;
@@ -120,46 +132,157 @@ void get_edges_in_route(RouteData& p_rd, const Vertex& p_start, const Vertex& p_
     }
 }
 
-RouteData bi_directional_dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end)
+// This function is only used when performing bi-direction search
+void construct_shortest_path(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const SearchData* const ptr_sd)
+{
+    if (ptr_sd->m_visited.find(p_end) != ptr_sd->m_visited.end())
+    {
+        Vertex l_current = p_end;
+        while (l_current != p_start)
+        {
+            p_rd.m_vertices.insert(l_current);
+            l_current = ptr_sd->m_prev.at(l_current);
+        }
+    }
+}
+
+void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visitedVertices, std::atomic<bool>& p_met, Vertex& p_meetingPoint, SearchData* ptr_sd, std::vector<Vertex>& o_lastFrontier)
 {
     // Initialize visited, distance and previous maps
-    std::unordered_map<Vertex, bool, VertexHash, VertexCompare> l_visited;
-    std::unordered_map<Vertex, int, VertexHash, VertexCompare> l_dist;
-    previousVertexMap l_prev;
+    ptr_sd = new SearchData(p_adj);
+    Vertex l_meetingPoint;
+    
 
-    for (const auto& l_item: p_adj)
-    {
-        l_visited[l_item.first] = false;
-        l_dist[l_item.first] = INT_MAX;
-        l_prev[l_item.first];
-    }
-
-    l_dist.at(p_start) = 0;
+    ptr_sd->m_dist.at(p_start) = 0;
     IndexedPriorityQueue<Vertex, VertexHash> l_pq;
     l_pq.insert(p_start);
 
-    while (l_pq.size() != 0 && !l_visited.at(p_end))
+    while (!p_met && !l_pq.empty())
     {
         Vertex l_current = l_pq.extract_min();
-        l_visited.at(l_current) = true;
-        // std::cout << "Current: " << l_current.get_name_c() << "\n";
+        ptr_sd->m_visited.at(l_current) = true;
+        // Check if a vertex has been visted by the other search, if so break out of the search then set p_met = true
+        g_mtx.lock();
+        if (p_visitedVertices.find(l_current) != p_visitedVertices.end())
+        {
+            l_meetingPoint = std::move(l_current);
+            break;
+        }
+        else
+            p_visitedVertices.insert(l_current);
+        g_mtx.unlock();
+        // View all connected vertices
+        for (const auto& l_edge: p_adj.at(l_current))
+        {
+            Vertex l_viewing(l_edge.m_destLat, l_edge.m_destLng, l_edge.m_dest);
+            // Ignore already visited vertices
+            if (!ptr_sd->m_visited.at(l_viewing))
+            {
+                int l_newDist = ptr_sd->m_dist.at(l_current) + l_edge.m_cost;
+                // Relax the edge
+                if (l_newDist < ptr_sd->m_dist.at(l_viewing))
+                {
+                    ptr_sd->m_prev.at(l_viewing) = l_current;
+                    ptr_sd->m_dist.at(l_viewing) = l_newDist;
+                    // Update the priority queue
+                    Vertex l_updated(l_viewing);
+                    l_pq.insert(l_viewing);
+                    l_updated.set_cost(l_newDist);
+                    l_pq.change_priority(l_viewing, l_updated);
+                }
+            }
+        }
+    }
+    p_met = true;
+    o_lastFrontier = std::move(l_pq.data());
+    g_mtx.lock();
+    if (p_meetingPoint.get_name_c() == "***")
+        p_meetingPoint = std::move(l_meetingPoint);
+    g_mtx.unlock();
+}
+
+RouteData bi_directional_dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end)
+{
+    vertexSet l_visitedVertices;
+    std::atomic<bool> l_met(false);
+    std::vector<Vertex> l_forwardLastFrontier;
+    std::vector<Vertex> l_backwardLastFrontier;
+    previousVertexMap l_forwardSearchPrev;
+    previousVertexMap l_backwardSearchPrev;
+
+    Vertex l_meetingPoint;
+    // Remember to FREE
+    SearchData* l_forwardSearchData = nullptr;
+    SearchData* l_backwardSearchData = nullptr;
+
+    std::thread l_backwardSearch(search, std::cref(p_adj), std::cref(p_end), std::ref(l_visitedVertices), std::ref(l_met), std::ref(l_meetingPoint), l_backwardSearchData, std::ref(l_backwardLastFrontier));
+    search(p_adj, p_start, l_visitedVertices, l_met, l_meetingPoint, l_forwardSearchData, l_forwardLastFrontier);
+    l_backwardSearch.join();
+
+    const Vertex l_originalMeetingPoint = l_meetingPoint;
+    int l_smallestDist = l_forwardSearchData->m_dist.at(l_meetingPoint) + l_backwardSearchData->m_dist.at(l_meetingPoint);
+    for (const Vertex& l_v: l_forwardLastFrontier)
+    {
+        if (l_v != l_originalMeetingPoint)
+        {
+            int l_currentDist = l_forwardSearchData->m_dist.at(l_v);
+            // If any of the vertices that l_v are connected to are in the backward frontier and have a shorter distance update the meeting point
+            for (const Edge& l_e: p_adj.at(l_v))
+            {
+                if (l_currentDist + l_e.m_cost < l_smallestDist)
+                {
+                    l_smallestDist = l_currentDist + l_e.m_cost;
+                    l_meetingPoint = Vertex(l_e.m_destLat, l_e.m_destLng, l_e.m_dest);
+                    l_forwardSearchData->m_dist.at(l_meetingPoint) = l_smallestDist;
+                }
+            }
+        }
+    }
+
+    // Construct the route
+    RouteData l_rd;
+    std::vector<Vertex> l_forwardRoute;
+    std::vector<Vertex> l_backwardRoute;
+    construct_shortest_path(l_rd, p_start, l_meetingPoint, l_forwardSearchData);
+    construct_shortest_path(l_rd, l_meetingPoint, p_end, l_backwardSearchData);
+    get_edges_in_route(l_rd, p_start, l_meetingPoint, l_forwardSearchData->m_prev, p_adj);
+    get_edges_in_route(l_rd, l_meetingPoint, p_end, l_backwardSearchData->m_prev, p_adj);
+
+    delete l_forwardSearchData;
+    delete l_backwardSearchData;
+
+    return l_rd;
+
+}
+
+RouteData dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end)
+{
+    SearchData l_sd(p_adj);
+
+    l_sd.m_dist.at(p_start) = 0;
+    IndexedPriorityQueue<Vertex, VertexHash> l_pq;
+    l_pq.insert(p_start);
+
+    while (l_pq.size() != 0 && !l_sd.m_visited.at(p_end))
+    {
+        Vertex l_current = l_pq.extract_min();
+        l_sd.m_visited.at(l_current) = true;
         // View all the connected vertices
-        int l_edgeIndex = 0;
         for (const auto& l_edge: p_adj.at(l_current))
         {
             Vertex l_viewing(l_edge.m_destLat, l_edge.m_destLng, l_edge.m_dest);
             // If the viewing vertex has already been visited just ignore it
-            if (!l_visited.at(l_viewing))
+            if (!l_sd.m_visited.at(l_viewing))
             {
                 // std::cout << "viewing : " << l_viewing.get_name_c() << ": Distance: ";
-                int l_newDist = l_dist.at(l_current) + l_edge.m_cost;
+                int l_newDist = l_sd.m_dist.at(l_current) + l_edge.m_cost;
                 // Relax the edge
-                if (l_newDist < l_dist.at(l_viewing))
+                if (l_newDist < l_sd.m_dist.at(l_viewing))
                 {
                     // std::cout << l_newDist << "\n";
-                    l_prev.at(l_viewing) = l_current;
+                    l_sd.m_prev.at(l_viewing) = l_current;
                     // Edge to the viewing vertex
-                    l_dist.at(l_viewing) = l_newDist;
+                    l_sd.m_dist.at(l_viewing) = l_newDist;
                     // Update the priority queue
                     Vertex l_updated(l_viewing);
                     l_pq.insert(l_updated);
@@ -167,20 +290,19 @@ RouteData bi_directional_dijkstra(const adjacencyList& p_adj, const Vertex& p_st
                     l_pq.change_priority(l_viewing, l_updated);
                 }
             }
-            l_edgeIndex++;
         }
     }
 
     RouteData l_rd;
-    if (l_visited.at(p_end))
+    if (l_sd.m_visited.find(p_end) != l_sd.m_visited.end())
     {
         Vertex l_viewing = p_end;
         while (l_viewing.get_name_c() != p_start.get_name_c())
         {
             l_rd.m_vertices.insert(l_viewing);
-            l_viewing = l_prev.at(l_viewing);
+            l_viewing = l_sd.m_prev.at(l_viewing);
         }
-        get_edges_in_route(l_rd, p_start, p_end, l_prev, p_adj);
+        get_edges_in_route(l_rd, p_start, p_end, l_sd.m_prev, p_adj);
         return l_rd;
     }
     return l_rd;
@@ -209,8 +331,18 @@ int main(int argc, char* args[])
         std::cout << "Start or end point are not in the csv file\n";
         return 1;
     }
+    else
+    {
+        l_se.m_start.set_cost(0);
+        l_se.m_end.set_cost(0);
+    }
     
-    RouteData l_route = bi_directional_dijkstra(l_adj, l_se.m_start, l_se.m_end);
+    std::clock_t l_start;
+    l_start = std::clock();
+    RouteData l_route = dijkstra(l_adj, l_se.m_start, l_se.m_end);
+    double l_duration = (std::clock() - l_start) / (double)CLOCKS_PER_SEC;
+    std::cout << l_duration << "\n";
+    // Print all locations visited on the route
     for (const Vertex& l_cv: l_route.m_vertices)
         std::cout << l_cv.get_name() << " : ";
     std::cout << std::endl;
