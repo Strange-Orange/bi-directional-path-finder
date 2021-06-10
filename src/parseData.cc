@@ -423,9 +423,6 @@ void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std:
         if (p_grid.at(l_currentSegment).empty())
             continue;
 
-        if (l_currentSegment == 2485)
-            std::cout << "We are here!" << std::endl;
-
         std::unordered_set<int> l_visited;
         l_visited.insert(l_currentSegment);
         int l_level = 1;
