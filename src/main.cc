@@ -3,6 +3,7 @@
 #include "common.h"
 #include "indexedPriorityQueue.h"
 #include "parseData.h"
+#include "timer.h"
 
 #include <iostream>
 #include <string>
@@ -14,9 +15,9 @@
 #include <atomic>
 #include <functional>
 #include <SDL2/SDL.h>
+#include <chrono>
 
 #include <limits.h>
-#include <ctime>
 
 SDL_Window* g_window = nullptr;
 SDL_Renderer* g_renderer = nullptr;
@@ -28,8 +29,9 @@ void quit();
 inline void lat_lng_position(int p_lat, int p_lng, const Bounds& p_bounds, int& o_x, int& o_y);
 StartEnd place_name_to_vertex(const std::string& p_start, const std::string& p_end, const adjacencyList& p_adj);
 void get_edges_in_route(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const previousVertexMap& p_prevMap, const adjacencyList& p_adj);
-void construct_shortest_path(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const SearchData* const ptr_sd);
-void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visitedVertices, std::atomic<bool>& p_met, Vertex& p_meetingPoint, SearchData* ptr_sd, std::vector<Vertex>& o_lastFrontier);
+void get_vertices_in_route(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const SearchData* const ptr_sd);
+void check_shortest_path(const adjacencyList& p_adj, Vertex& p_meetingPoint, const vertexSet& p_forwardFrontier, const vertexSet& p_backwardFrontier, SearchData* p_forwardData, const SearchData* const p_backwardData);
+void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visitedVertices, std::atomic<bool>& p_met, Vertex& p_meetingPoint, SearchData* ptr_sd, vertexSet& o_lastFrontier, const bool p_forward=true);
 RouteData bi_directional_dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end);
 RouteData dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end);
 
@@ -132,13 +134,14 @@ void get_edges_in_route(RouteData& p_rd, const Vertex& p_start, const Vertex& p_
     }
 }
 
-// This function is only used when performing bi-direction search
-void construct_shortest_path(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const SearchData* const ptr_sd)
+// This function is only used when performing bi-direction search to add the vertices to the route data
+void get_vertices_in_route(RouteData& p_rd, const Vertex& p_start, const Vertex& p_end, const SearchData* const ptr_sd)
 {
     if (ptr_sd->m_visited.find(p_end) != ptr_sd->m_visited.end())
     {
         Vertex l_current = p_end;
-        while (l_current != p_start)
+        // A default name for a vertex is "***"
+        while (l_current.get_name_c() != "***")
         {
             p_rd.m_vertices.insert(l_current);
             l_current = ptr_sd->m_prev.at(l_current);
@@ -146,31 +149,62 @@ void construct_shortest_path(RouteData& p_rd, const Vertex& p_start, const Verte
     }
 }
 
-void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visitedVertices, std::atomic<bool>& p_met, Vertex& p_meetingPoint, SearchData* ptr_sd, std::vector<Vertex>& o_lastFrontier)
+// Make sure the meeting point of the 2 frontiers is on the shortest path. Where the frontiers meet is on the path of the least number of edges, which may not be the path with the lowest weight
+void check_shortest_path(const adjacencyList& p_adj, Vertex& p_meetingPoint, const vertexSet& p_forwardFrontier, const vertexSet& p_backwardFrontier, SearchData* p_forwardData, const SearchData* const p_backwardData)
+{
+    int l_smallestDist = p_forwardData->m_dist.at(p_meetingPoint) + p_backwardData->m_dist.at(p_meetingPoint);
+    for (const Vertex& l_vertex: p_forwardFrontier)
+    {
+        if (l_vertex != p_meetingPoint)
+        {
+            for (const Edge& l_edge: p_adj.at(l_vertex))
+            {
+                // First check that if the edge leads to a vertex in the backward frontier
+                const Vertex l_viewing(l_edge.m_destLat, l_edge.m_destLng, l_edge.m_dest);
+                int l_newDist =  p_forwardData->m_dist.at(l_vertex) + p_backwardData->m_dist.at(l_viewing);
+                if (p_backwardFrontier.find(l_viewing) != p_backwardFrontier.end() && l_newDist < l_smallestDist)
+                {
+                    l_smallestDist = l_newDist;
+                    p_meetingPoint = l_viewing;
+                    // Update the forward search data with the new path
+                    p_forwardData->m_visited.at(l_viewing) = true;
+                    p_forwardData->m_dist.at(l_viewing) = l_newDist;
+                    p_forwardData->m_prev.at(l_viewing) = l_vertex;
+                }
+            }
+        }
+    }
+}
+
+void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visitedVertices, std::atomic<bool>& p_met, Vertex& p_meetingPoint, SearchData* ptr_sd, vertexSet& o_lastFrontier, const bool p_forward)
 {
     // Initialize visited, distance and previous maps
-    ptr_sd = new SearchData(p_adj);
-    Vertex l_meetingPoint;
-    
-
+    // Maybe move the search data stuff to the main thread?
     ptr_sd->m_dist.at(p_start) = 0;
+    ptr_sd->m_visited.at(p_start) = true;
     IndexedPriorityQueue<Vertex, VertexHash> l_pq;
     l_pq.insert(p_start);
+    o_lastFrontier.insert(p_start);
 
     while (!p_met && !l_pq.empty())
     {
         Vertex l_current = l_pq.extract_min();
+        o_lastFrontier.erase(l_current);
         ptr_sd->m_visited.at(l_current) = true;
-        // Check if a vertex has been visted by the other search, if so break out of the search then set p_met = true
-        g_mtx.lock();
-        if (p_visitedVertices.find(l_current) != p_visitedVertices.end())
+
+        // Check if a vertex has been visted by the other search
         {
-            l_meetingPoint = std::move(l_current);
-            break;
+            std::lock_guard<std::mutex> l_lock(g_mtx);
+            if (l_current != p_start && p_visitedVertices.find(l_current) != p_visitedVertices.end() && !p_met)
+            {
+                p_met = true;
+                p_meetingPoint = l_current;
+                break;
+            }
+            else
+                p_visitedVertices.insert(l_current);
         }
-        else
-            p_visitedVertices.insert(l_current);
-        g_mtx.unlock();
+
         // View all connected vertices
         for (const auto& l_edge: p_adj.at(l_current))
         {
@@ -184,75 +218,61 @@ void search(const adjacencyList& p_adj, const Vertex& p_start, vertexSet& p_visi
                 {
                     ptr_sd->m_prev.at(l_viewing) = l_current;
                     ptr_sd->m_dist.at(l_viewing) = l_newDist;
-                    // Update the priority queue
+                    // Update the priority queue and the last frontier set
                     Vertex l_updated(l_viewing);
                     l_pq.insert(l_viewing);
                     l_updated.set_cost(l_newDist);
                     l_pq.change_priority(l_viewing, l_updated);
+
+                    // If the viewing vertex is already in the last frontier set remove it and replace it with the updated version with the new cost
+                    if (o_lastFrontier.find(l_viewing) != o_lastFrontier.end())
+                        o_lastFrontier.erase(l_viewing);
+                    o_lastFrontier.insert(l_updated);
                 }
             }
         }
     }
-    p_met = true;
-    o_lastFrontier = std::move(l_pq.data());
-    g_mtx.lock();
-    if (p_meetingPoint.get_name_c() == "***")
-        p_meetingPoint = std::move(l_meetingPoint);
-    g_mtx.unlock();
 }
 
 RouteData bi_directional_dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end)
 {
     vertexSet l_visitedVertices;
+    l_visitedVertices.insert(p_start);
+    l_visitedVertices.insert(p_end);
+
+    // Remember to FREE
+    SearchData* l_forwardSearchData = new SearchData(p_adj);
+    SearchData* l_backwardSearchData = new SearchData(p_adj);
+
     std::atomic<bool> l_met(false);
-    std::vector<Vertex> l_forwardLastFrontier;
-    std::vector<Vertex> l_backwardLastFrontier;
-    previousVertexMap l_forwardSearchPrev;
-    previousVertexMap l_backwardSearchPrev;
+    vertexSet l_forwardLastFrontier;
+    vertexSet l_backwardLastFrontier;
 
     Vertex l_meetingPoint;
-    // Remember to FREE
-    SearchData* l_forwardSearchData = nullptr;
-    SearchData* l_backwardSearchData = nullptr;
 
-    std::thread l_backwardSearch(search, std::cref(p_adj), std::cref(p_end), std::ref(l_visitedVertices), std::ref(l_met), std::ref(l_meetingPoint), l_backwardSearchData, std::ref(l_backwardLastFrontier));
-    search(p_adj, p_start, l_visitedVertices, l_met, l_meetingPoint, l_forwardSearchData, l_forwardLastFrontier);
+    std::thread l_forwardSearch(search, std::cref(p_adj), std::cref(p_start), std::ref(l_visitedVertices), std::ref(l_met), std::ref(l_meetingPoint), l_forwardSearchData, std::ref(l_forwardLastFrontier), true);
+    std::thread l_backwardSearch(search, std::cref(p_adj), std::cref(p_end), std::ref(l_visitedVertices), std::ref(l_met), std::ref(l_meetingPoint), l_backwardSearchData, std::ref(l_backwardLastFrontier), false);
+    l_forwardSearch.join();
     l_backwardSearch.join();
+ 
+    if (!l_met)
+        return {};
 
-    const Vertex l_originalMeetingPoint = l_meetingPoint;
-    int l_smallestDist = l_forwardSearchData->m_dist.at(l_meetingPoint) + l_backwardSearchData->m_dist.at(l_meetingPoint);
-    for (const Vertex& l_v: l_forwardLastFrontier)
-    {
-        if (l_v != l_originalMeetingPoint)
-        {
-            int l_currentDist = l_forwardSearchData->m_dist.at(l_v);
-            // If any of the vertices that l_v are connected to are in the backward frontier and have a shorter distance update the meeting point
-            for (const Edge& l_e: p_adj.at(l_v))
-            {
-                if (l_currentDist + l_e.m_cost < l_smallestDist)
-                {
-                    l_smallestDist = l_currentDist + l_e.m_cost;
-                    l_meetingPoint = Vertex(l_e.m_destLat, l_e.m_destLng, l_e.m_dest);
-                    l_forwardSearchData->m_dist.at(l_meetingPoint) = l_smallestDist;
-                }
-            }
-        }
-    }
+    check_shortest_path(p_adj, l_meetingPoint, l_forwardLastFrontier, l_backwardLastFrontier, l_forwardSearchData, l_backwardSearchData);
 
     // Construct the route
     RouteData l_rd;
     std::vector<Vertex> l_forwardRoute;
     std::vector<Vertex> l_backwardRoute;
-    construct_shortest_path(l_rd, p_start, l_meetingPoint, l_forwardSearchData);
-    construct_shortest_path(l_rd, l_meetingPoint, p_end, l_backwardSearchData);
+    get_vertices_in_route(l_rd, p_start, l_meetingPoint, l_forwardSearchData);
+    get_vertices_in_route(l_rd, p_end, l_meetingPoint, l_backwardSearchData);
     get_edges_in_route(l_rd, p_start, l_meetingPoint, l_forwardSearchData->m_prev, p_adj);
-    get_edges_in_route(l_rd, l_meetingPoint, p_end, l_backwardSearchData->m_prev, p_adj);
+    get_edges_in_route(l_rd, p_end, l_meetingPoint, l_backwardSearchData->m_prev, p_adj);
 
     delete l_forwardSearchData;
     delete l_backwardSearchData;
 
     return l_rd;
-
 }
 
 RouteData dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vertex& p_end)
@@ -263,7 +283,7 @@ RouteData dijkstra(const adjacencyList& p_adj, const Vertex& p_start, const Vert
     IndexedPriorityQueue<Vertex, VertexHash> l_pq;
     l_pq.insert(p_start);
 
-    while (l_pq.size() != 0 && !l_sd.m_visited.at(p_end))
+    while (!l_pq.empty() && !l_sd.m_visited.at(p_end))
     {
         Vertex l_current = l_pq.extract_min();
         l_sd.m_visited.at(l_current) = true;
@@ -337,15 +357,21 @@ int main(int argc, char* args[])
         l_se.m_end.set_cost(0);
     }
     
-    std::clock_t l_start;
-    l_start = std::clock();
-    RouteData l_route = dijkstra(l_adj, l_se.m_start, l_se.m_end);
-    double l_duration = (std::clock() - l_start) / (double)CLOCKS_PER_SEC;
-    std::cout << l_duration << "\n";
-    // Print all locations visited on the route
-    for (const Vertex& l_cv: l_route.m_vertices)
-        std::cout << l_cv.get_name() << " : ";
-    std::cout << std::endl;
+    // Time both of the searches
+    {
+        std::cout << "Normal search ";
+        Timer l_timer;
+        RouteData l_route = dijkstra(l_adj, l_se.m_start, l_se.m_end);
+    }
+
+    {
+        std::cout << "Bi-directional-search ";
+        Timer l_timer;
+        RouteData l_route = bi_directional_dijkstra(l_adj, l_se.m_start, l_se.m_end);
+    }
+
+    // Use bi-directional search for the display
+    RouteData l_route = bi_directional_dijkstra(l_adj, l_se.m_start, l_se.m_end);
 
     std::unordered_set<Edge, EdgeHash, EdgeCompare> l_routeEdges;
 
