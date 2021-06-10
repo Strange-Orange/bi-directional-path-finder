@@ -4,7 +4,6 @@
 #include "vertex.h"
 #include "edge.h"
 
-#include <array>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>

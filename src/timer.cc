@@ -1,5 +1,8 @@
 #include "timer.h"
 
+#include <iostream>
+#include <ctime>
+
 Timer::Timer()
     : m_startTime(std::clock()) {};
 

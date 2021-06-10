@@ -10,7 +10,7 @@
 
 struct Edge
 {
-    // Cost will be distance as the crow flies, model as if it were flat. May change this later
+    // Cost will be distance as the crow flies, model as if it were flat.
     double m_cost;
     int m_srcLat;
     int m_srcLng;

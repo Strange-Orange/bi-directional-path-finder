@@ -3,7 +3,6 @@
 #include "edge.h"
 #include "common.h"
 
-#include <iostream>
 #include <string>
 #include <unordered_set>
 #include <array>
@@ -28,8 +27,8 @@ const int g_SEGMENTS = 50;
 const int g_TOTALSEGMENTS = g_SEGMENTS * g_SEGMENTS;
 // Values to be added to move between segments
 // Ordering is North, east, south, west, north east, south east, south west and north west
-const std::array<int, DIRECTIONS> g_touchingSegments {g_SEGMENTS, 1, -g_SEGMENTS, -1, g_SEGMENTS + 1, -g_SEGMENTS + 1, -g_SEGMENTS - 1, g_SEGMENTS - 1};
-const std::array<uint8_t, DIRECTIONS> g_dirMasks 
+constexpr std::array<int, DIRECTIONS> g_touchingSegments {g_SEGMENTS, 1, -g_SEGMENTS, -1, g_SEGMENTS + 1, -g_SEGMENTS + 1, -g_SEGMENTS - 1, g_SEGMENTS - 1};
+constexpr std::array<uint8_t, DIRECTIONS> g_dirMasks 
 {
     DIR_NORTH,
     DIR_EAST,
@@ -407,8 +406,8 @@ std::pair<Vertex, Vertex> vertices_to_connect_segments(const vectorVertex2d& p_g
 
 void connect_grid(adjacencyList& p_adj, const vectorVertex2d& p_grid, const std::vector<Segment>& p_segmentInfo)
 {
-    // Connect a Segments together, a segment unless it is on an edge is surround by 8 other segments which can be divided into
-    // 4 groups, top 3 north, botton 3 south, right 3 east and left 3 west. There is some overlay in groups.
+    // Connect Segments together. A segment unless it is on an edge is surround by 8 other segments which can be divided into
+    // 4 groups, top 3 north, botton 3 south, right 3 east and left 3 west, there is some overlay in groups.
     // The idea is to connect the segment to all segments until it is connect on 2 opposite sides or reaches and edge.
     // Use bfs to find the nearest 2 segments that contain vertices in opposite directions
 

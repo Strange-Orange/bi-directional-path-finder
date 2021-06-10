@@ -41,7 +41,6 @@ inline uint8_t invert_directions(uint8_t p_directions);
 void create_row_segments(const std::vector<Vertex>& p_lats, vectorVertex2d& o_segments);
 void create_col_segments(const std::vector<Vertex>& p_lngs, vectorVertex2d& o_segments);
 void create_grid_segments(const vectorVertex2d& p_rows, const  vectorVertex2d& p_cols,  vectorVertex2d& o_grid, std::vector<Segment>& o_segmentInfo);
-// int find_neighbour(int p_direction, int p_currentIndex, const std::vector<Vertex>& p_vertices);
 uint8_t neighbour_direction(const Vertex& p_current, const Vertex& p_viewing);
 void find_neighbours(const Vertex& p_current, const std::vector<Vertex>& p_segment, std::vector<Edge>& o_n);
 void connect_vertices(adjacencyList& p_adj, const vectorVertex2d& p_grid);

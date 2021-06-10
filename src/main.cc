@@ -15,7 +15,6 @@
 #include <atomic>
 #include <functional>
 #include <SDL2/SDL.h>
-#include <chrono>
 
 #include <limits.h>
 
